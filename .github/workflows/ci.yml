@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (SQLite, Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
+
+  test-postgres:
+    name: Tests (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: authorityguard
+          POSTGRES_PASSWORD: authorityguard
+          POSTGRES_DB: authorityguard_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U authorityguard"
+          --health-interval 5s --health-retries 10
+    env:
+      AG_TEST_DATABASE_URL: postgresql+psycopg://authorityguard:authorityguard@localhost:5432/authorityguard_test
+      AG_DATABASE_URL: postgresql+psycopg://authorityguard:authorityguard@localhost:5432/authorityguard_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,postgres]"
+      - run: pytest
+      - name: Migrations apply cleanly from the CLI
+        run: alembic upgrade head && alembic downgrade base
