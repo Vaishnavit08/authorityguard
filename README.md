@@ -13,7 +13,7 @@ AuthorityGuard sits between agents and their tools. Every tool call carries a **
 task-scoped capability**. Delegation can only **narrow** that capability, and every call is decided
 by **deterministic backend code, never by the LLM**.
 
-> **Live demo:** `https://<your-render-app>.onrender.com/dashboard` (see [docs/deployment.md](docs/deployment.md))
+> **Live demo:** `https://authorityguard.onrender.com/dashboard` ())
 
 ## The demo in one picture
 
