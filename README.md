@@ -6,9 +6,9 @@ When a human asks an agent to do a narrow task and that agent delegates to sub-a
 makes sure no agent in the chain can act beyond the human's original authority. Every sensitive tool
 call is checked by deterministic backend code before it runs. The LLM never makes the authorization decision.
 
-> Status: **Week 1 complete.** Identity registry (users, agents, parent/child, lifecycle) and tasks are
-> implemented, migrated with Alembic and tested on SQLite and PostgreSQL (CI). Capabilities, delegation,
-> policy, gateway and dashboard follow the roadmap below.
+> Status: **Week 2 complete.** Identity registry, tasks and **signed, short-lived capability tokens**
+> (Ed25519) with layered verification are implemented and tested on SQLite and PostgreSQL (CI).
+> Delegation, policy, gateway and dashboard follow the roadmap below.
 
 ## Demo scenario
 
@@ -60,12 +60,19 @@ alembic revision --autogenerate -m "describe the change"
 | POST | `/v1/tasks` | Start a task: principal + *their own top-level* agent + purpose |
 | GET | `/v1/tasks`, `/v1/tasks/{id}` | List (filter by `principal_user_id`, `status`) / get tasks |
 | POST | `/v1/tasks/{id}/status` | `completed` or `cancelled` (both terminal) |
+| POST | `/v1/capabilities` | Issue a signed capability for a task's root agent (token shown **once**) |
+| POST | `/v1/capabilities/verify` | Check a token right now: `{valid, reason_code}` |
+| GET | `/v1/capabilities`, `/v1/capabilities/{id}` | Capability metadata (never the token) |
+| POST | `/v1/capabilities/{id}/revoke` | Revoke immediately |
 
 All lists accept `limit` (1–500, default 100) and `offset`. Errors return
 `{"detail": {"code": "...", "message": "..."}}` with a stable machine-readable `code`.
 
-> ⚠️ There is no caller authentication yet: any client can call any endpoint. Human authentication and
-> signed capabilities arrive in Week 2. Run locally only.
+> ⚠️ Agents now prove their authority with capability tokens, but the *management* endpoints (creating
+> users, agents, tasks, issuing capabilities) still have no human login. A demo principal key is added
+> with the gateway in Week 4. Run locally only.
+
+See [docs/capabilities.md](docs/capabilities.md) for how tokens are built and checked.
 
 ## Roadmap
 
@@ -73,7 +80,7 @@ All lists accept `limit` (1–500, default 100) and `offset`. Errors return
 |------|-----------|--------|
 | 0 | Threat model, design, skeleton, seeded scenario | ✅ |
 | 1 | Users / agents / tasks API, lifecycle, Alembic migrations, PostgreSQL CI | ✅ |
-| 2 | Signed short-lived capability tokens (iss/aud/exp/jti checks) | ⬜ |
+| 2 | Signed short-lived capability tokens (iss/aud/exp/jti checks) | ✅ |
 | 3 | Delegation attenuation + policy engine | ⬜ |
 | 4 | LangGraph agents, mock tools, execution gateway, human approval | ⬜ |
 | 5 | Audit log, delegation graph, Streamlit dashboard | ⬜ |

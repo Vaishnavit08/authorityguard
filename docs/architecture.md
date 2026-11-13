@@ -26,7 +26,8 @@ low false-block rate and low latency overhead, compared with an unprotected base
 |--------|---------|-----------|
 | Identity registry + lifecycle | `src/authorityguard/identity` | Weeks 0–1 ✅ |
 | Tasks | `src/authorityguard/tasks` | Week 1 ✅ |
-| Capability issuer + delegation | `src/authorityguard/identity` | Weeks 2–3 |
+| Capability issuer + verification | `src/authorityguard/capabilities` | Week 2 ✅ |
+| Delegation (attenuation) | `src/authorityguard/capabilities` | Week 3 |
 | Policy decision point | `src/authorityguard/policy` | Week 3 |
 | Execution gateway + approvals | `src/authorityguard/gateway` | Week 4 |
 | LangGraph demo agents | `src/authorityguard/agents` | Week 4 |
@@ -40,7 +41,9 @@ low false-block rate and low latency overhead, compared with an unprotected base
 | Decision | Choice | Reason |
 |----------|--------|--------|
 | Who decides authorization | Backend code + policy engine only | LLM output is untrusted (threat model T3) |
-| Token format | JWT (EdDSA or ES256) via a vetted library | Standard claims (`iss`, `sub`, `aud`, `exp`, `jti`); no custom crypto |
+| Token format | JWT signed with Ed25519 (`EdDSA`) via PyJWT | Standard claims (`iss`, `sub`, `aud`, `exp`, `nbf`, `jti`); no custom crypto |
+| Token storage | Only a SHA-256 hash is stored; raw token shown once | A DB leak doesn't hand out usable tokens |
+| Verification | Signature **and** DB record **and** live state (task, agent chain) | A valid signature alone is never enough |
 | Policy engine | Python evaluator first, OPA/Rego later | Fast first milestone; same inputs give the same decision |
 | DB | SQLite for local dev, PostgreSQL in Docker / CI | Works without Docker on day 1; SQLModel abstracts both |
 | Schema changes | Alembic migrations; a test fails on model/migration drift | Reproducible upgrades; the app never runs `create_all` |

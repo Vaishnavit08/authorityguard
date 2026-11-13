@@ -9,8 +9,8 @@ COPY apps ./apps
 COPY migrations ./migrations
 RUN pip install --no-cache-dir ".[postgres]"
 
-# Run as non-root
-RUN useradd --create-home --uid 10001 app
+# Run as non-root. .keys holds the dev signing key; mount a real key there outside dev.
+RUN useradd --create-home --uid 10001 app && mkdir -p /app/.keys && chown app /app/.keys
 USER app
 
 EXPOSE 8000

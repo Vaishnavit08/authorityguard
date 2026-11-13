@@ -3,11 +3,13 @@ import os
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel
 
 from apps.api.main import create_app
+from authorityguard.capabilities.keys import Signer, get_signer
 from authorityguard.storage.db import get_session, init_db, make_engine
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -32,7 +34,17 @@ def engine():
 
 
 @pytest.fixture
-def client(engine):
+def signer():
+    # A fresh in-memory key per test: tests never touch the real dev key file.
+    return Signer(
+        private_key=Ed25519PrivateKey.generate(),
+        issuer="authorityguard",
+        audience="authorityguard-gateway",
+    )
+
+
+@pytest.fixture
+def client(engine, signer):
     app = create_app()
 
     def _session():
@@ -40,6 +52,7 @@ def client(engine):
             yield session
 
     app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_signer] = lambda: signer
     return TestClient(app)
 
 
@@ -84,4 +97,32 @@ def api(client):
             assert r.status_code == expect, r.text
             return r.json()
 
+        def capability(self, task_id, scopes=None, ttl_seconds=None, expect=201):
+            body = {"task_id": task_id, "scopes": READ_SCOPES if scopes is None else scopes}
+            if ttl_seconds is not None:
+                body["ttl_seconds"] = ttl_seconds
+            r = client.post("/v1/capabilities", json=body)
+            assert r.status_code == expect, r.text
+            return r.json()
+
+        def verify(self, token, agent_id=None):
+            body = {"token": token} | ({"agent_id": agent_id} if agent_id else {})
+            r = client.post("/v1/capabilities/verify", json=body)
+            assert r.status_code == 200, r.text
+            return r.json()
+
+        def setup_task(self):
+            """alice-demo → research-agent → extract-agent, plus one active task."""
+            user = self.user("alice-demo")
+            root = self.agent(user["id"], "research-agent")
+            child = self.agent(user["id"], "extract-agent", root["id"])
+            task = self.task(user["id"], root["id"])
+            return {"user": user, "root": root, "child": child, "task": task}
+
     return Api()
+
+
+READ_SCOPES = [
+    {"action": "file.read", "resource": "/demo/projects/*"},
+    {"action": "doc.summarize", "resource": "*"},
+]

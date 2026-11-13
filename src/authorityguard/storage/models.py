@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import JSON, DateTime, String
 from sqlmodel import Field, SQLModel
 
 
@@ -62,3 +62,25 @@ class Task(SQLModel, table=True):
     status: TaskStatus = Field(default=TaskStatus.active, sa_type=String(20), index=True)
     created_at: datetime = Field(default_factory=_now, sa_type=DateTime(timezone=True))
     closed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+
+
+class Capability(SQLModel, table=True):
+    """Metadata for every issued capability token. The token itself is never stored,
+    only its SHA-256 hash, so a database leak does not hand out usable tokens."""
+
+    __tablename__ = "capabilities"
+
+    id: str = Field(primary_key=True)  # the token's jti
+    task_id: str = Field(foreign_key="tasks.id", index=True)
+    subject_agent_id: str = Field(foreign_key="agents.id", index=True)
+    parent_capability_id: str | None = Field(
+        default=None, foreign_key="capabilities.id", index=True
+    )
+    depth: int = 0  # 0 = issued to the root agent; +1 per delegation (Week 3)
+    issuer: str = Field(max_length=100)
+    audience: str = Field(max_length=100)
+    scopes: list[dict] = Field(sa_type=JSON)
+    token_hash: str = Field(max_length=64, unique=True)
+    issued_at: datetime = Field(sa_type=DateTime(timezone=True))
+    expires_at: datetime = Field(sa_type=DateTime(timezone=True))
+    revoked_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))

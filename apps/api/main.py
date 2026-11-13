@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from authorityguard import __version__
+from authorityguard.capabilities.router import router as capabilities_router
 from authorityguard.errors import DomainError
 from authorityguard.identity.router import router as identity_router
 from authorityguard.tasks.router import router as tasks_router
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
 
     app.include_router(identity_router)
     app.include_router(tasks_router)
+    app.include_router(capabilities_router)
     return app
 
 

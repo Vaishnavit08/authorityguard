@@ -76,6 +76,31 @@ def create_agent(session: Session, data: AgentCreate) -> Agent:
     return agent
 
 
+MAX_CHAIN_LENGTH = 16
+
+
+def chain_problem(session: Session, agent_id: str) -> str | None:
+    """Return why an agent may not act right now, or None if it may.
+
+    Walks the agent and every ancestor: each one, and its owner, must still be active.
+    This is the *use-time* revocation check: suspending a parent or the human
+    immediately disables every descendant (threat T10)."""
+    current_id: str | None = agent_id
+    for _ in range(MAX_CHAIN_LENGTH):
+        if current_id is None:
+            return None
+        agent = session.get(Agent, current_id)
+        if agent is None:
+            return "agent_not_found"
+        if agent.status != IdentityStatus.active:
+            return "agent_inactive"
+        owner = session.get(User, agent.owner_user_id)
+        if owner is None or owner.status != IdentityStatus.active:
+            return "principal_inactive"
+        current_id = agent.parent_agent_id
+    return "chain_too_deep"
+
+
 def set_user_status(session: Session, user_id: str, status: IdentityStatus) -> User:
     user = get_user(session, user_id)
     check_transition(user.status, status)

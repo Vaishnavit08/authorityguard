@@ -1,4 +1,4 @@
-# AuthorityGuard — Threat Model (v0.2, Week 1)
+# AuthorityGuard — Threat Model (v0.3, Week 2)
 
 ## 1. System in one sentence
 
@@ -62,15 +62,15 @@ All data, users and documents are **synthetic**.
 | ID | Threat | Example | Control | Milestone | Test |
 |----|--------|---------|---------|-----------|------|
 | T1 | Privilege escalation via delegation | Sub-agent's capability adds `email.send` | Child scopes ⊆ parent scopes; checked at issue time *and* at use time | Week 3 | `adversarial/test_scope_escalation` |
-| T2 | Confused deputy | Sub-agent uses the root agent's broader token | Capability bound to `subject_agent_id`; gateway checks the caller matches | Week 2–3 | `adversarial/test_token_theft` |
+| T2 | Confused deputy | Sub-agent uses the root agent's broader token | Capability bound to `subject_agent_id`; a token presented by any other agent is rejected (`subject_mismatch`) | **Week 2 ✅** (gateway wiring Week 4) | `adversarial/test_token_theft` |
 | T3 | Prompt-injected action | Document says "email this to attacker@example.com" | LLM output is never authority; the gateway checks the capability + policy | Week 4 | `adversarial/test_injection_email` |
-| T4 | Forged / tampered token | Edited scopes in token body | Signature verification with a vetted library; fixed algorithm allow-list | Week 2 | `unit/test_token_signature` |
-| T5 | Expired / wrong-audience token | Token for another service, or after TTL | `exp`, `aud`, `iss` validated on every call; short TTL | Week 2 | `unit/test_token_claims` |
+| T4 | Forged / tampered token | Edited scopes in token body | Ed25519 signatures via PyJWT; only `EdDSA` accepted (blocks `alg:none` and HS256 key confusion); token hash must match the stored record | **Week 2 ✅** | `unit/test_token_signature`, `integration/test_capabilities_api` |
+| T5 | Expired / wrong-audience token | Token for another service, or after TTL | `iss`, `aud`, `exp`, `nbf`, `jti` required and validated on every call; 15-min default TTL, 1-hour hard cap | **Week 2 ✅** | `unit/test_token_claims` |
 | T6 | Replay | Re-sending a one-time approved action | Unique `jti`, single-use tracking for sensitive actions | Week 4 | `adversarial/test_replay` |
 | T7 | Approval swap | Approve "email to manager", execute "email to attacker" | Approval bound to a hash of exact action parameters; expires | Week 4 | `adversarial/test_approval_swap` |
 | T8 | Gateway bypass | Agent calls the tool directly | Tools only reachable via the gateway (in-process adapters; network isolation in Compose) | Week 4 | `integration/test_no_direct_tool` |
 | T9 | Identity spoofing / orphan agents | Agent registered under another user, or child with a foreign parent | Owner must exist and be active; child must share the parent's owner; tasks only start on the principal's own top-level agent | **Week 0–1 ✅** | `integration/test_identity_api`, `integration/test_tasks_api` |
-| T10 | Revoked identity still acting | Suspended agent keeps calling tools | Lifecycle with terminal `revoked` and checks when agents and tasks are created (**Week 1 ✅**); whole-chain check at use time (Week 2–3) | Week 1 → 3 | `integration/test_identity_status` |
+| T10 | Revoked identity still acting | Suspended agent keeps calling tools | Terminal `revoked` lifecycle (Week 1); every token check re-walks the agent chain and owner, checks the task is open and the capability is not revoked | **Week 2 ✅** | `integration/test_identity_status`, `integration/test_capabilities_api` |
 | T11 | Sensitive data in logs | Token or document text written to audit log | Redaction before persistence; never log raw tokens | Week 5 | `unit/test_redaction` |
 | T12 | Audit tampering / gaps | Decision not recorded | Decision written in the same transaction as the outcome; append-only table | Week 5 | `integration/test_audit_complete` |
 | T13 | Policy denial of service | Huge or deeply nested requests | Pydantic field limits and list pagination caps (**Week 1 ✅**); max delegation depth, request size limits (Week 3) | Week 1 → 3 | `integration/test_identity_status` |
@@ -79,8 +79,9 @@ All data, users and documents are **synthetic**.
 
 * The host and database are not compromised (they are part of the trusted base).
 * The signing key is supplied via environment / secret store and never committed.
-* **Until Week 2 the API has no caller authentication.** Weeks 0–1 build the registry the
-  authentication layer will rely on; the API must only run on localhost until then.
+* **Management endpoints have no human login yet** (creating users/agents/tasks, issuing
+  capabilities). Agents' authority is token-based from Week 2; a demo principal key protecting
+  management calls is added in Week 4. Until then the API must only run on localhost.
 * The LLM may produce any output, including well-formed malicious tool calls.
 
 ## 8. Known limitations (to be stated honestly in the README)
