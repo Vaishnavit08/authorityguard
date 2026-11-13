@@ -17,7 +17,9 @@ services:
   api:
     build: .
     environment:
+      AG_ENV: demo
       AG_DATABASE_URL: postgresql+psycopg://authorityguard:authorityguard@db:5432/authorityguard
+      AG_ADMIN_API_KEY: ${AG_ADMIN_API_KEY:-change-me-local-only}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

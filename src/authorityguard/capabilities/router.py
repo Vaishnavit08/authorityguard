@@ -1,34 +1,83 @@
-from typing import Annotated
+from fastapi import APIRouter
+from sqlmodel import select
 
-from fastapi import APIRouter, Depends
-from sqlmodel import Session, select
-
+from authorityguard.audit.service import record_event
 from authorityguard.capabilities import service
-from authorityguard.capabilities.keys import Signer, TokenInvalid, get_signer
+from authorityguard.capabilities.keys import TokenInvalid
 from authorityguard.capabilities.schemas import (
     CapabilityIssue,
     CapabilityIssued,
     CapabilityRead,
+    DelegateRequest,
     VerifyRequest,
     VerifyResponse,
 )
-from authorityguard.config import Settings, get_settings
-from authorityguard.storage.db import get_session
+from authorityguard.deps import AdminOnly, PolicyDep, SessionDep, SettingsDep, SignerDep, TraceDep
+from authorityguard.errors import DomainError
 from authorityguard.storage.models import Capability
 from authorityguard.storage.pagination import PageDep
 
 router = APIRouter(prefix="/v1/capabilities", tags=["capabilities"])
-SessionDep = Annotated[Session, Depends(get_session)]
-SignerDep = Annotated[Signer, Depends(get_signer)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-@router.post("", response_model=CapabilityIssued, status_code=201)
+def _issued_event(session, kind: str, trace_id: str, cap: CapabilityIssued, actor: str | None):
+    record_event(
+        session,
+        kind,
+        trace_id,
+        actor_id=actor,
+        subject_id=cap.capability_id,
+        task_id=cap.task_id,
+        details={
+            "subject_agent_id": cap.subject_agent_id,
+            "parent_capability_id": cap.parent_capability_id,
+            "depth": cap.depth,
+            "scopes": [s.model_dump() for s in cap.scopes],
+            "expires_at": cap.expires_at.isoformat(),
+        },
+    )
+
+
+@router.post("", response_model=CapabilityIssued, status_code=201, dependencies=AdminOnly)
 def issue_capability(
-    data: CapabilityIssue, session: SessionDep, signer: SignerDep, settings: SettingsDep
+    data: CapabilityIssue,
+    session: SessionDep,
+    signer: SignerDep,
+    settings: SettingsDep,
+    trace_id: TraceDep,
 ) -> CapabilityIssued:
     """Issue a root capability for a task's top-level agent. The token is shown only once."""
-    return service.issue_root_capability(session, signer, settings, data)
+    cap = service.issue_root_capability(session, signer, settings, data)
+    _issued_event(session, "capability.issued", trace_id, cap, actor=None)
+    return cap
+
+
+@router.post("/delegate", response_model=CapabilityIssued, status_code=201)
+def delegate_capability(
+    data: DelegateRequest,
+    session: SessionDep,
+    signer: SignerDep,
+    settings: SettingsDep,
+    policy: PolicyDep,
+    trace_id: TraceDep,
+) -> CapabilityIssued:
+    """An agent delegates a *narrower* capability to its direct child. Authority comes from
+    the parent token itself, so no admin key is needed."""
+    try:
+        cap = service.delegate_capability(session, signer, settings, policy, data)
+    except DomainError as exc:
+        code = exc.code
+        record_event(
+            session,
+            "capability.delegation_denied",
+            trace_id,
+            actor_id=data.delegator_agent_id,
+            subject_id=data.child_agent_id,
+            details={"reason_code": code, "scopes": [s.model_dump() for s in data.scopes]},
+        )
+        raise
+    _issued_event(session, "capability.delegated", trace_id, cap, actor=data.delegator_agent_id)
+    return cap
 
 
 @router.post("/verify", response_model=VerifyResponse)
@@ -58,6 +107,8 @@ def get_capability(capability_id: str, session: SessionDep) -> Capability:
     return service.get_capability(session, capability_id)
 
 
-@router.post("/{capability_id}/revoke", response_model=CapabilityRead)
-def revoke_capability(capability_id: str, session: SessionDep) -> Capability:
-    return service.revoke_capability(session, capability_id)
+@router.post("/{capability_id}/revoke", response_model=CapabilityRead, dependencies=AdminOnly)
+def revoke_capability(capability_id: str, session: SessionDep, trace_id: TraceDep) -> Capability:
+    cap = service.revoke_capability(session, capability_id)
+    record_event(session, "capability.revoked", trace_id, subject_id=cap.id, task_id=cap.task_id)
+    return cap

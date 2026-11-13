@@ -39,9 +39,23 @@ class CapabilityIssued(BaseModel):
     token_type: str = "Bearer"  # noqa: S105  (a token *type*, not a secret)
     task_id: str
     subject_agent_id: str
+    parent_capability_id: str | None = None
+    depth: int = 0
     scopes: list[Scope]
     issued_at: datetime
     expires_at: datetime
+
+
+class DelegateRequest(BaseModel):
+    """An agent hands part of its authority to one of its direct child agents."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parent_token: str = Field(max_length=8192)
+    delegator_agent_id: str  # must be the parent token's subject
+    child_agent_id: str
+    scopes: Scopes
+    ttl_seconds: int | None = Field(default=None, ge=1)
 
 
 class CapabilityRead(BaseModel):

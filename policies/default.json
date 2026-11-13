@@ -1,0 +1,28 @@
+{
+  "version": "2026-11-13.1",
+  "description": "Default AuthorityGuard policy. Evaluated after capability scopes; can only restrict, never grant.",
+  "max_delegation_depth": 2,
+  "rules": [
+    {
+      "id": "deny-system-paths",
+      "effect": "deny",
+      "action": "file.read",
+      "resource": "/etc/*",
+      "reason_code": "policy_system_path"
+    },
+    {
+      "id": "deny-hr-records",
+      "effect": "deny",
+      "action": "*",
+      "resource": "/demo/hr/*",
+      "reason_code": "policy_hr_records"
+    },
+    {
+      "id": "outbound-email-needs-human",
+      "effect": "require_approval",
+      "action": "email.send",
+      "resource": "mailto:*",
+      "reason_code": "policy_outbound_email"
+    }
+  ]
+}

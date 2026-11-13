@@ -84,3 +84,68 @@ class Capability(SQLModel, table=True):
     issued_at: datetime = Field(sa_type=DateTime(timezone=True))
     expires_at: datetime = Field(sa_type=DateTime(timezone=True))
     revoked_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+
+
+class ApprovalStatus(StrEnum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    used = "used"  # approved and consumed by exactly one execution
+
+
+class Approval(SQLModel, table=True):
+    """A human sign-off bound to one exact action (threat T7) that can be used once (T6)."""
+
+    __tablename__ = "approvals"
+
+    id: str = Field(default_factory=_new_id, primary_key=True)
+    trace_id: str = Field(max_length=64, index=True)
+    task_id: str = Field(foreign_key="tasks.id", index=True)
+    agent_id: str = Field(foreign_key="agents.id")
+    capability_id: str = Field(foreign_key="capabilities.id")
+    action: str = Field(max_length=100)
+    resource: str = Field(max_length=300)
+    # SHA-256 over capability, agent, action, resource and parameters.
+    action_hash: str = Field(max_length=64)
+    # Human-readable summary for the approver; never full document contents.
+    summary: dict = Field(default_factory=dict, sa_type=JSON)
+    status: ApprovalStatus = Field(default=ApprovalStatus.pending, sa_type=String(20), index=True)
+    created_at: datetime = Field(default_factory=_now, sa_type=DateTime(timezone=True))
+    expires_at: datetime = Field(sa_type=DateTime(timezone=True))
+    decided_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    decided_by: str | None = Field(default=None, max_length=100)
+    used_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+
+
+class AuthorizationDecision(SQLModel, table=True):
+    __tablename__ = "authorization_decisions"
+
+    id: str = Field(default_factory=_new_id, primary_key=True)
+    trace_id: str = Field(max_length=64, index=True)
+    task_id: str | None = Field(default=None, index=True)
+    agent_id: str | None = Field(default=None, max_length=64, index=True)
+    capability_id: str | None = Field(default=None, max_length=64)
+    action: str = Field(max_length=100)
+    resource: str = Field(max_length=300)
+    decision: str = Field(max_length=20)
+    reason_code: str = Field(max_length=60)
+    rule_id: str | None = Field(default=None, max_length=100)
+    policy_version: str = Field(max_length=50)
+    dry_run: bool = False
+    latency_ms: float = 0.0
+    created_at: datetime = Field(default_factory=_now, sa_type=DateTime(timezone=True))
+
+
+class AuditEvent(SQLModel, table=True):
+    """Append-only log. `details` is redacted before it is stored (threat T11)."""
+
+    __tablename__ = "audit_events"
+
+    id: str = Field(default_factory=_new_id, primary_key=True)
+    trace_id: str = Field(max_length=64, index=True)
+    event_type: str = Field(max_length=60, index=True)
+    actor_id: str | None = Field(default=None, max_length=64)
+    subject_id: str | None = Field(default=None, max_length=64)
+    task_id: str | None = Field(default=None, max_length=64, index=True)
+    details: dict = Field(default_factory=dict, sa_type=JSON)
+    created_at: datetime = Field(default_factory=_now, sa_type=DateTime(timezone=True))

@@ -1,4 +1,4 @@
-# Capability tokens (Week 2)
+# Capability tokens
 
 A **capability** is a signed, short-lived permission slip that says exactly what one agent may do
 for one task. Agents present it with every protected action; AuthorityGuard checks it every time.
@@ -52,12 +52,21 @@ working the moment the task closes, the agent is suspended, or the capability is
 ## Keys
 
 * The private key lives at `AG_SIGNING_KEY_PATH` (default `.keys/signing-ed25519.pem`, git-ignored).
-* In `AG_ENV=dev` it is generated automatically on first use. In any other environment it must exist.
+* In `AG_ENV=dev` or `demo` it is generated automatically on first use. In any other environment it must exist.
 * Each token header carries `kid` (a fingerprint of the public key) so keys can be rotated later.
 * Tests use a fresh in-memory key and never touch the file.
 
-## Not yet (later weeks)
+## Delegation (Week 3)
 
-* Delegating a *narrower* capability to a sub-agent: Week 3.
-* Matching an action/resource against scopes and the policy: Week 3.
-* Single-use tokens and replay protection for sensitive actions: Week 4.
+`POST /v1/capabilities/delegate` takes the parent token, the delegator's agent id and the desired
+scopes. The child capability is issued only if:
+
+* the delegator is the parent token's subject, and the parent token passes every check above
+* the target is a **direct child** of the delegator in the registered agent tree
+* every requested scope is **within** a parent scope: same action, narrower or equal resource, and it
+  keeps any `requires_approval` flag
+* it does not outlive the parent (`ttl_exceeds_parent`), and depth stays ≤ the policy's
+  `max_delegation_depth` (2)
+
+At use time, revoking any ancestor capability disables all of its descendants
+(`parent_capability_revoked`).

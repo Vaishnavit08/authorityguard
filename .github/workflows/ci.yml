@@ -18,6 +18,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: ruff check .
+      - run: ruff format --check src tests apps
       - run: pytest
 
   test-postgres:
@@ -46,3 +47,42 @@ jobs:
       - run: pytest
       - name: Migrations apply cleanly from the CLI
         run: alembic upgrade head && alembic downgrade base
+
+  benchmark:
+    name: Security benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Run benchmark (fails if any attack succeeds or benign action is blocked)
+        run: python -m authorityguard.benchmark --check --report benchmark-report.md --json benchmark-results.json
+      - run: cat benchmark-report.md | head -40 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark
+          path: |
+            benchmark-report.md
+            benchmark-results.json
+
+  docker:
+    name: Docker image smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t authorityguard .
+      - name: Start container
+        run: |
+          docker run -d --name ag -p 8000:8000 -e AG_ENV=demo -e AG_ADMIN_API_KEY=ci-secret authorityguard
+          for i in $(seq 1 30); do curl -fs localhost:8000/health && break; sleep 1; done
+      - name: Health, dashboard, admin protection and end-to-end demo
+        run: |
+          curl -fs localhost:8000/health
+          curl -fs localhost:8000/dashboard | grep -q AuthorityGuard
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8000/v1/users -H 'Content-Type: application/json' -d '{"demo_name":"eve"}')" = "401"
+          curl -fs -X POST localhost:8000/v1/demo/run -H 'Content-Type: application/json' -d '{"auto_approve":true}' > run.json
+          python3 -c "import json; r=json.load(open('run.json')); s={x['title']:x for x in r['steps']}; assert r['status']=='completed'; assert s['Emails the confidential file externally']['decision']=='deny'; print('demo ok:', len(r['steps']), 'steps')"
+      - if: failure()
+        run: docker logs ag

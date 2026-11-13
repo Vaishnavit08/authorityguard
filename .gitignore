@@ -10,3 +10,4 @@ build/
 dist/
 .keys/
 *.pem
+benchmark-results.json

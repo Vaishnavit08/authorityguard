@@ -1,1 +1,1 @@
-"""Policy decision point (Week 3)."""
+"""Policy decision point: deterministic allow / deny / approval_required (Week 3)."""

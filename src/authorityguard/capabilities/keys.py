@@ -111,5 +111,5 @@ def load_or_create_private_key(path: Path, allow_create: bool) -> Ed25519Private
 @lru_cache
 def get_signer() -> Signer:
     s = get_settings()
-    key = load_or_create_private_key(Path(s.signing_key_path), allow_create=s.env == "dev")
+    key = load_or_create_private_key(Path(s.signing_key_path), allow_create=s.allow_generated_key)
     return Signer(private_key=key, issuer=s.token_issuer, audience=s.token_audience)

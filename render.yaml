@@ -1,0 +1,20 @@
+# One-click deploy on Render (https://render.com): New → Blueprint → pick this repo.
+# Free plan: the container sleeps when idle and its disk is ephemeral, so the demo database
+# and signing key reset on every restart. That is fine for a synthetic-data showcase.
+services:
+  - type: web
+    name: authorityguard
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: AG_ENV
+        value: demo
+      # Protects management endpoints. The public demo button uses it internally.
+      - key: AG_ADMIN_API_KEY
+        generateValue: true
+      - key: AG_DATABASE_URL
+        value: sqlite:////app/data/authorityguard.db
+      - key: AG_DEMO_RUNS_PER_MINUTE
+        value: "20"
